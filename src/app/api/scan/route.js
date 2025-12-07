@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getCachedSearch, setCachedSearch } from '@/lib/cache';
 
 // Initialize Gemini
 const apiKey = process.env.GEMINI_API_KEY;
@@ -16,6 +17,14 @@ export async function GET(request) {
         }
 
         console.log("Processing query:", query);
+
+        // Check cache first
+        const cachedResults = await getCachedSearch(query);
+        if (cachedResults) {
+            console.log("Returning cached results - API call saved!");
+            return NextResponse.json({ listings: cachedResults, cached: true });
+        }
+
 
         // Google Custom Search API
         const GOOGLE_API_KEY = process.env.GEMINI_API_KEY; // User said to use the same key
@@ -100,7 +109,13 @@ export async function GET(request) {
         }
 
         console.log(`Generated ${listings.length} structured listings.`);
-        return NextResponse.json({ listings });
+
+        // Cache the results for future requests
+        if (listings.length > 0) {
+            await setCachedSearch(query, listings);
+        }
+
+        return NextResponse.json({ listings, cached: false });
 
     } catch (error) {
         console.error("Scan error:", error);
