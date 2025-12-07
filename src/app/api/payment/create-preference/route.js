@@ -6,6 +6,11 @@ const client = new MercadoPagoConfig({ accessToken: process.env.MERCADOPAGO_ACCE
 export async function POST(request) {
     try {
         const body = await request.json();
+        const { userId } = body; // Expect userId from client
+
+        if (!userId) {
+            return NextResponse.json({ error: 'User ID required' }, { status: 400 });
+        }
 
         // Get the base URL dynamically (works in dev and production)
         const baseUrl = process.env.VERCEL_URL
@@ -30,7 +35,10 @@ export async function POST(request) {
                     failure: `${baseUrl}/?payment=failure`,
                     pending: `${baseUrl}/?payment=pending`
                 },
-
+                notification_url: `${baseUrl}/api/payment/webhook`,
+                metadata: {
+                    user_id: userId
+                }
             }
         });
 
