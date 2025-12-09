@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  trailingSlash: false, // Ensure consistent URL handling for webhooks
   images: {
     remotePatterns: [
       {
