@@ -13,16 +13,21 @@ export default function Navbar() {
 
     useEffect(() => {
         setMounted(true);
+        console.log("🔍 Navbar mounted, auth:", auth ? "REAL" : "MOCK");
 
         let unsubscribe = () => { };
 
         if (auth) {
+            console.log("✅ Using real Firebase auth");
             unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                console.log("👤 Auth state changed:", currentUser ? currentUser.email : "No user");
                 setUser(currentUser);
             });
         } else {
+            console.log("⚠️ Using mock auth");
             // Fallback to mock auth
             unsubscribe = mockAuth.onAuthStateChanged((currentUser) => {
+                console.log("👤 Mock auth state:", currentUser ? currentUser.email : "No user");
                 setUser(currentUser);
             });
 
@@ -86,22 +91,22 @@ export default function Navbar() {
                 <div className="hidden md:flex items-center gap-4">
                     {user ? (
                         <div className="flex items-center gap-4">
-                            <span className="text-sm text-[var(--text-secondary)]">
-                                Credits: <span className="text-[var(--success)] font-mono">Free Tier</span>
-                            </span>
+                            <Link href="/perfil" className="text-sm text-[var(--text-secondary)] hover:text-[var(--primary)] transition-colors">
+                                Mi Perfil
+                            </Link>
                             <div className="flex items-center gap-2">
                                 <img
-                                    src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`}
+                                    src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}`}
                                     alt="Profile"
                                     className="w-8 h-8 rounded-full border border-[var(--border)]"
                                 />
-                                <span className="text-sm font-medium">{user.displayName}</span>
+                                <span className="text-sm font-medium">{user.displayName || user.email}</span>
                             </div>
                             <button
                                 onClick={handleLogout}
                                 className="btn btn-outline text-xs py-2 px-3 h-8"
                             >
-                                <LogOut size={14} className="mr-1" /> Logout
+                                <LogOut size={14} className="mr-1" /> Salir
                             </button>
                         </div>
                     ) : (
@@ -109,7 +114,7 @@ export default function Navbar() {
                             onClick={handleLogin}
                             className="btn btn-primary"
                         >
-                            <User size={18} className="mr-2" /> Login with Google
+                            <User size={18} className="mr-2" /> Ingresar con Google
                         </button>
                     )}
                 </div>
@@ -130,7 +135,7 @@ export default function Navbar() {
                         <div className="flex flex-col gap-4">
                             <div className="flex items-center gap-3">
                                 <img
-                                    src={user.photoURL}
+                                    src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}`}
                                     alt="Profile"
                                     className="w-10 h-10 rounded-full"
                                 />
@@ -139,11 +144,18 @@ export default function Navbar() {
                                     <p className="text-xs text-[var(--text-secondary)]">{user.email}</p>
                                 </div>
                             </div>
+                            <Link
+                                href="/perfil"
+                                className="btn btn-outline w-full justify-start"
+                                onClick={() => setIsMenuOpen(false)}
+                            >
+                                <User size={16} className="mr-2" /> Mi Perfil
+                            </Link>
                             <button
                                 onClick={handleLogout}
                                 className="btn btn-outline w-full justify-start"
                             >
-                                <LogOut size={16} className="mr-2" /> Logout
+                                <LogOut size={16} className="mr-2" /> Salir
                             </button>
                         </div>
                     ) : (
@@ -151,7 +163,7 @@ export default function Navbar() {
                             onClick={handleLogin}
                             className="btn btn-primary w-full"
                         >
-                            <User size={18} className="mr-2" /> Login with Google
+                            <User size={18} className="mr-2" /> Ingresar con Google
                         </button>
                     )}
                 </div>

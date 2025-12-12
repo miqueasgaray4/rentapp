@@ -7,6 +7,84 @@ const apiKey = process.env.GEMINI_API_KEY;
 console.log("Initializing Gemini with API Key present:", !!apiKey);
 const genAI = new GoogleGenerativeAI(apiKey);
 
+/**
+ * Extract phone numbers from text using Gemini Vision OCR
+ * @param {string} imageUrl - URL of the image to process
+ * @returns {Promise<string|null>} Extracted phone number or null
+ */
+async function extractContactFromImage(imageUrl) {
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+
+        // Fetch image and convert to base64
+        const imageResponse = await fetch(imageUrl);
+        if (!imageResponse.ok) return null;
+
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = Buffer.from(imageBuffer).toString('base64');
+
+        const prompt = `Analiza esta imagen y extrae SOLO números de teléfono o contacto.
+        Busca patrones como:
+        - +54 9 11 1234-5678
+        - 11-1234-5678
+        - 1234567890
+        - WhatsApp: [número]
+        - Tel: [número]
+        
+        Si encuentras un número, devuélvelo en formato internacional argentino: +54 9 AREA NUMERO
+        Si NO hay números de teléfono, devuelve exactamente: "NONE"
+        Solo devuelve el número o "NONE", nada más.`;
+
+        const result = await model.generateContent([
+            prompt,
+            {
+                inlineData: {
+                    mimeType: 'image/jpeg',
+                    data: base64Image
+                }
+            }
+        ]);
+
+        const text = result.response.text().trim();
+        return text === "NONE" ? null : text;
+    } catch (error) {
+        console.error('OCR extraction failed:', error);
+        return null;
+    }
+}
+
+/**
+ * Extract phone number from text snippet
+ * @param {string} text - Text to search
+ * @returns {string|null} Formatted phone number or null
+ */
+function extractPhoneFromText(text) {
+    if (!text) return null;
+
+    // Argentine phone patterns
+    const patterns = [
+        /(?:\+54\s?9?\s?)?(\d{2,4})[\s-]?(\d{4})[\s-]?(\d{4})/g, // General format
+        /(?:tel|teléfono|celular|whatsapp|wa)[\s:]+(\d[\d\s-]{8,})/gi, // With prefix
+        /(\d{10,11})/g // Raw 10-11 digits
+    ];
+
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match) {
+            // Clean and format
+            const cleaned = match[0].replace(/\D/g, '');
+            if (cleaned.length >= 10) {
+                // Format as +54 9 AREA NUMBER
+                const areaCode = cleaned.slice(-10, -8);
+                const number = cleaned.slice(-8);
+                return `+54 9 ${areaCode} ${number}`;
+            }
+        }
+    }
+
+    return null;
+}
+
 export async function GET(request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -25,9 +103,8 @@ export async function GET(request) {
             return NextResponse.json({ listings: cachedResults, cached: true });
         }
 
-
         // Google Custom Search API
-        const GOOGLE_API_KEY = process.env.GEMINI_API_KEY; // User said to use the same key
+        const GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
         const CX = process.env.GOOGLE_SEARCH_ENGINE_ID;
 
         // Construct query to ensure we get rentals
@@ -51,52 +128,71 @@ export async function GET(request) {
             return NextResponse.json({ listings: [] });
         }
 
-        // Process with Gemini to extract structured data from snippets
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        // Extract images and prepare data for Gemini
+        const enrichedResults = searchResults.map(item => {
+            const images = [];
 
-        const prompt = `
-        Actúa como un agente inmobiliario experto. Tu tarea es extraer información estructurada de los siguientes resultados de búsqueda de Google para crear listados de alquiler.
-        
-        Input (Resultados de búsqueda):
-        ${JSON.stringify(searchResults.map(item => ({
-            title: item.title,
-            link: item.link,
-            snippet: item.snippet,
-            source: item.displayLink
-        })))}
+            // Extract images from pagemap
+            if (item.pagemap?.cse_image) {
+                images.push(...item.pagemap.cse_image.map(img => img.src));
+            }
+            if (item.pagemap?.metatags?.[0]?.['og:image']) {
+                images.push(item.pagemap.metatags[0]['og:image']);
+            }
 
-        Instrucciones:
-        1. Analiza el título y el snippet de cada resultado.
-        2. Extrae: Precio (si está disponible, estima en ARS), Ubicación, Dormitorios, etc.
-        3. Si falta información (ej: dormitorios), haz una estimación educada basada en el precio/descripción o pon 1.
-        4. DESCARTA resultados que sean claramente VENTAS o no sean propiedades (ej: artículos de noticias).
-        5. Para la imagen ('images'), usa la 'pagemap.cse_image' si está disponible en el input original (no se pasó aquí, pero asume que no hay imagen fiable y deja el array vacío o usa una genérica si quieres, pero mejor vacío). 
-        *Corrección*: No tengo acceso a pagemap aquí. Deja 'images' como array vacío [].
+            return {
+                title: item.title,
+                link: item.link,
+                snippet: item.snippet,
+                source: item.displayLink,
+                images: [...new Set(images)].slice(0, 5) // Unique images, max 5
+            };
+        });
 
-        Output JSON array:
-        [{
-            "id": "string (usa el link)",
-            "title": "string (limpio)",
-            "description": "string (basado en snippet)",
-            "price": number (0 si no se encuentra),
-            "currency": "ARS",
-            "location": "string",
-            "bedrooms": number,
-            "bathrooms": number,
-            "amenities": ["string"],
-            "images": [], 
-            "contact": null,
-            "source": "string (ej: Facebook, MercadoLibre)",
-            "url": "string (link original)",
-            "aiAnalysis": {
-                "summary": "string",
-                "priceRating": "string"
-            },
-            "postedAt": "string (ISO date)"
-        }]
-        
-        Solo devuelve JSON válido.
-        `;
+        // Process with Gemini to extract structured data
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
+
+        const prompt = `Actúa como un agente inmobiliario experto. Extrae información estructurada de estos resultados de búsqueda.
+
+Input (Resultados de búsqueda):
+${JSON.stringify(enrichedResults)}
+
+Instrucciones:
+1. Analiza título, snippet e imágenes de cada resultado
+2. Extrae: Precio (ARS), Ubicación, Dormitorios, Baños
+3. Extrae números de teléfono del snippet (busca patrones como: 11-1234-5678, +54 9 11..., WhatsApp:, Tel:)
+4. Si encuentras un número, formátalo como: +54 9 AREA NUMERO
+5. DESCARTA resultados que sean VENTAS o artículos de noticias
+6. Incluye las URLs de imágenes en el array 'images'
+7. Si falta info, estima razonablemente o usa valores por defecto
+
+Output JSON array:
+[{
+    "id": "string (usa el link como ID único)",
+    "title": "string (limpio y conciso)",
+    "description": "string (basado en snippet)",
+    "price": number (0 si no se encuentra),
+    "currency": "ARS",
+    "location": "string (barrio/zona)",
+    "bedrooms": number (default: 1),
+    "bathrooms": number (default: 1),
+    "amenities": ["string"],
+    "images": ["url1", "url2"],
+    "contact": {
+        "phone": "string (+54 9 formato) o null",
+        "source": "text" o "image"
+    },
+    "source": "string (ej: Facebook, MercadoLibre)",
+    "url": "string (link original)",
+    "aiAnalysis": {
+        "summary": "string (análisis breve)",
+        "priceRating": "Excelente" | "Bueno" | "Promedio" | "Alto",
+        "fraudScore": number (0.0-1.0, donde 1.0 es alta probabilidad de fraude)
+    },
+    "postedAt": "string (ISO date, estima si no está disponible)"
+}]
+
+IMPORTANTE: Solo devuelve JSON válido, sin texto adicional.`;
 
         const result = await model.generateContent(prompt);
         const cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
@@ -106,9 +202,32 @@ export async function GET(request) {
             listings = JSON.parse(cleanJson);
         } catch (e) {
             console.error("Failed to parse Gemini response", cleanJson);
+            return NextResponse.json({ listings: [] });
         }
 
         console.log(`Generated ${listings.length} structured listings.`);
+
+        // OCR Enhancement: For listings with images but no contact, try OCR
+        const ocrPromises = listings.map(async (listing) => {
+            if (!listing.contact?.phone && listing.images && listing.images.length > 0) {
+                console.log(`Attempting OCR for listing: ${listing.id}`);
+
+                // Try OCR on first image
+                const extractedPhone = await extractContactFromImage(listing.images[0]);
+
+                if (extractedPhone) {
+                    listing.contact = {
+                        phone: extractedPhone,
+                        source: 'image'
+                    };
+                    console.log(`OCR found contact: ${extractedPhone}`);
+                }
+            }
+            return listing;
+        });
+
+        // Wait for all OCR operations
+        listings = await Promise.all(ocrPromises);
 
         // Cache the results for future requests
         if (listings.length > 0) {

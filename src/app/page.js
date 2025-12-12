@@ -8,6 +8,7 @@ import ListingDetailsModal from '@/components/ListingDetailsModal';
 import { auth, mockAuth } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Lock, Search } from 'lucide-react';
+import { addRecentSearch } from '@/lib/userProfile';
 
 export default function Home() {
   const [user, setUser] = useState(null);
@@ -101,6 +102,11 @@ export default function Home() {
         }
 
         if (newFilters) setFilters(newFilters);
+
+        // Track recent search if user is logged in
+        if (user) {
+          await addRecentSearch(user.uid, query);
+        }
       }
     } catch (error) {
       console.error("Search failed:", error);
@@ -199,78 +205,67 @@ export default function Home() {
       />
 
       <div className="container mt-8">
-        {!user ? (
-          <div className="text-center py-20 border border-dashed border-[var(--border)] rounded-xl bg-[var(--surface)]/50">
-            <Lock size={48} className="mx-auto mb-4 text-[var(--text-secondary)]" />
-            <h2 className="text-2xl font-bold mb-2">Iniciá Sesión para Ver Alquileres</h2>
-            <p className="text-[var(--text-secondary)] mb-6">
-              Unite a miles de usuarios encontrando su hogar seguro.
-            </p>
-            <button
-              onClick={() => mockAuth.signInWithPopup()}
-              className="btn btn-primary"
-            >
-              Ingresar con Google
-            </button>
+        {!hasSearched && listings.length === 0 && (
+          <div className="text-center py-20">
+            <Search size={48} className="mx-auto mb-4 text-[var(--text-secondary)] opacity-50" />
+            <h2 className="text-xl text-[var(--text-secondary)]">
+              Ingresá una ubicación arriba para comenzar la búsqueda.
+            </h2>
+            {!user && (
+              <p className="text-sm text-[var(--text-secondary)] mt-2">
+                💡 Inicia sesión para guardar alquileres y ver tu historial
+              </p>
+            )}
           </div>
-        ) : (
-          <>
-            {!hasSearched && listings.length === 0 && (
-              <div className="text-center py-20">
-                <Search size={48} className="mx-auto mb-4 text-[var(--text-secondary)] opacity-50" />
-                <h2 className="text-xl text-[var(--text-secondary)]">
-                  Ingresá una ubicación arriba para comenzar la búsqueda.
-                </h2>
-              </div>
-            )}
+        )}
 
-            {hasSearched && listings.length === 0 && !isScanning && (
-              <div className="text-center py-20">
-                <h2 className="text-xl text-[var(--text-secondary)]">
-                  No se encontraron resultados recientes. Intentá con otra búsqueda.
-                </h2>
-              </div>
-            )}
+        {hasSearched && listings.length === 0 && !isScanning && (
+          <div className="text-center py-20">
+            <h2 className="text-xl text-[var(--text-secondary)]">
+              No se encontraron resultados recientes. Intentá con otra búsqueda.
+            </h2>
+          </div>
+        )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {listings.slice(0, visibleLimit).map((listing, index) => (
-                <ListingCard
-                  key={listing.id || index}
-                  listing={listing}
-                  index={index}
-                  onViewDetails={setSelectedListing}
-                />
-              ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {listings.slice(0, visibleLimit).map((listing, index) => (
+            <ListingCard
+              key={listing.id || index}
+              listing={listing}
+              index={index}
+              onViewDetails={setSelectedListing}
+              user={user}
+            />
+          ))}
+        </div>
+
+        {/* Show Paywall if we hit the limit or have hidden items */}
+        {(dailyCount >= FREE_LIMIT || listings.length < allListings.length) && (
+          <div className="mt-12 text-center">
+            <div className="p-8 border border-[var(--border)] rounded-2xl bg-[var(--surface)]/50 backdrop-blur-sm">
+              <Lock className="mx-auto mb-4 text-[var(--primary)]" size={32} />
+              <h3 className="text-xl font-bold mb-2">Alcanzaste tu límite diario gratuito</h3>
+              <p className="text-[var(--text-secondary)] mb-6">
+                Has visto {dailyCount} de {FREE_LIMIT} propiedades gratuitas hoy.
+                <br />Desbloqueá 10 más por solo $1.000 ARS.
+              </p>
+              <div className="inline-block p-1 rounded-full bg-gradient-to-r from-[var(--primary)] to-purple-600">
+                <button
+                  onClick={handleLoadMore}
+                  className="px-8 py-3 bg-[var(--background)] rounded-full font-semibold hover:bg-opacity-90 transition-all"
+                >
+                  Desbloquear Más Alquileres
+                </button>
+              </div>
             </div>
-
-            {/* Show Paywall if we hit the limit or have hidden items */}
-            {(dailyCount >= FREE_LIMIT || listings.length < allListings.length) && (
-              <div className="mt-12 text-center">
-                <div className="p-8 border border-[var(--border)] rounded-2xl bg-[var(--surface)]/50 backdrop-blur-sm">
-                  <Lock className="mx-auto mb-4 text-[var(--primary)]" size={32} />
-                  <h3 className="text-xl font-bold mb-2">Alcanzaste tu límite diario gratuito</h3>
-                  <p className="text-[var(--text-secondary)] mb-6">
-                    Has visto {dailyCount} de {FREE_LIMIT} propiedades gratuitas hoy.
-                    <br />Desbloqueá 10 más por solo $1.000 ARS.
-                  </p>
-                  <div className="inline-block p-1 rounded-full bg-gradient-to-r from-[var(--primary)] to-purple-600">
-                    <button
-                      onClick={handleLoadMore}
-                      className="px-8 py-3 bg-[var(--background)] rounded-full font-semibold hover:bg-opacity-90 transition-all"
-                    >
-                      Desbloquear Más Alquileres
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
 
       <PaymentModal
         isOpen={isPaymentModalOpen}
         onClose={() => setIsPaymentModalOpen(false)}
+        user={user}
       />
 
       <ListingDetailsModal

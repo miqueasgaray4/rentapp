@@ -4,10 +4,17 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CreditCard, CheckCircle } from 'lucide-react';
 
-export default function PaymentModal({ isOpen, onClose }) {
+export default function PaymentModal({ isOpen, onClose, user }) {
     const [isLoading, setIsLoading] = useState(false);
 
     const handlePayment = async () => {
+        // Check if user is logged in
+        if (!user) {
+            alert("Debes iniciar sesión para realizar un pago");
+            onClose();
+            return;
+        }
+
         setIsLoading(true);
         try {
             const response = await fetch('/api/payment/create-preference', {
@@ -15,7 +22,7 @@ export default function PaymentModal({ isOpen, onClose }) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({}),
+                body: JSON.stringify({ userId: user.uid }),
             });
 
             const data = await response.json();
@@ -23,12 +30,13 @@ export default function PaymentModal({ isOpen, onClose }) {
             if (data.init_point) {
                 window.location.href = data.init_point;
             } else {
-                alert("Error al iniciar el pago. Por favor intentá de nuevo.");
+                console.error("Payment response:", data);
+                alert(`Error al iniciar el pago: ${data.error || 'Por favor intentá de nuevo.'}`);
                 setIsLoading(false);
             }
         } catch (error) {
             console.error("Payment error:", error);
-            alert("Error de conexión.");
+            alert("Error de conexión. Verificá tu internet e intentá de nuevo.");
             setIsLoading(false);
         }
     };

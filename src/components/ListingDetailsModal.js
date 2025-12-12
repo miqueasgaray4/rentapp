@@ -131,23 +131,64 @@ export default function ListingDetailsModal({ listing, isOpen, onClose }) {
                                 </div>
                             </div>
 
-                            <div className="mt-auto flex gap-3">
-                                {contact ? (
-                                    <button className="btn btn-primary flex-grow py-3 flex items-center justify-center gap-2">
-                                        Contactar Dueño <ExternalLink size={18} />
-                                    </button>
+                            {/* Contact Section */}
+                            {contact?.phone && (
+                                <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl">
+                                    <h3 className="font-semibold mb-3 flex items-center gap-2">
+                                        <span className="text-green-600">📱</span> Información de Contacto
+                                    </h3>
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[var(--text-secondary)]">Teléfono:</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-mono font-medium">{contact.phone}</span>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(contact.phone);
+                                                        alert('Número copiado al portapapeles');
+                                                    }}
+                                                    className="text-xs text-[var(--primary)] hover:underline"
+                                                >
+                                                    Copiar
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[var(--text-secondary)]">Extraído de:</span>
+                                            <span className="font-medium capitalize">{contact.source === 'image' ? 'Imagen (OCR)' : 'Texto'}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="mt-auto space-y-3">
+                                {contact?.phone ? (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                const phoneNumber = contact.phone.replace(/\D/g, '');
+                                                const message = encodeURIComponent(`Hola! Vi tu publicación de alquiler: ${title}`);
+                                                window.open(`https://wa.me/${phoneNumber}?text=${message}`, '_blank');
+                                            }}
+                                            className="btn btn-primary w-full py-3 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 border-green-600"
+                                        >
+                                            <span className="text-xl">💬</span> Contactar por WhatsApp
+                                        </button>
+                                        <button
+                                            onClick={() => window.open(listing.url, '_blank')}
+                                            className="btn btn-outline w-full py-3 flex items-center justify-center gap-2"
+                                        >
+                                            Ver Publicación Original <ExternalLink size={18} />
+                                        </button>
+                                    </>
                                 ) : (
-                                    <button disabled className="btn btn-outline flex-grow py-3 flex items-center justify-center gap-2 opacity-50 cursor-not-allowed">
-                                        Contacto No Disponible
+                                    <button
+                                        onClick={() => window.open(listing.url, '_blank')}
+                                        className="btn btn-primary w-full py-3 flex items-center justify-center gap-2"
+                                    >
+                                        Ver Publicación Original <ExternalLink size={18} />
                                     </button>
                                 )}
-
-                                <button className="btn btn-outline p-3">
-                                    <Heart size={20} />
-                                </button>
-                                <button className="btn btn-outline p-3">
-                                    <Share2 size={20} />
-                                </button>
                             </div>
                         </div>
                     </motion.div>
