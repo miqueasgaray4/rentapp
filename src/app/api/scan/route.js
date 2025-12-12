@@ -107,6 +107,20 @@ export async function GET(request) {
         const GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
         const CX = process.env.GOOGLE_SEARCH_ENGINE_ID;
 
+        // Validate environment variables
+        if (!GOOGLE_API_KEY || !CX) {
+            console.error("Missing environment variables!");
+            console.error("GEMINI_API_KEY present:", !!GOOGLE_API_KEY);
+            console.error("GOOGLE_SEARCH_ENGINE_ID present:", !!CX);
+            return NextResponse.json({
+                error: "Server configuration error. Missing API keys.",
+                missingKeys: {
+                    GEMINI_API_KEY: !GOOGLE_API_KEY,
+                    GOOGLE_SEARCH_ENGINE_ID: !CX
+                }
+            }, { status: 500 });
+        }
+
         // Construct query to ensure we get rentals
         const searchQ = `${query} alquiler departamento -venta`;
         const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${CX}&q=${encodeURIComponent(searchQ)}&num=10`;
@@ -117,7 +131,13 @@ export async function GET(request) {
         if (!googleRes.ok) {
             const err = await googleRes.text();
             console.error("Google Search API Error:", err);
-            throw new Error(`Google Search API failed: ${googleRes.status}`);
+            console.error("Status:", googleRes.status);
+            console.error("API Key present:", !!GOOGLE_API_KEY);
+            console.error("CX present:", !!CX);
+            return NextResponse.json({
+                error: `Google Search API failed: ${googleRes.status}. Check Vercel logs for details.`,
+                details: err
+            }, { status: 500 });
         }
 
         const googleData = await googleRes.json();
