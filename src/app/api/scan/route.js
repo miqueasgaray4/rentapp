@@ -123,7 +123,8 @@ export async function GET(request) {
 
         // Construct query to ensure we get rentals
         const searchQ = `${query} alquiler departamento -venta`;
-        const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${CX}&q=${encodeURIComponent(searchQ)}&num=10`;
+        // Reduce to 5 results for faster processing on Vercel free tier (10s timeout)
+        const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${CX}&q=${encodeURIComponent(searchQ)}&num=5`;
 
         console.log("Fetching Google Search...");
         const googleRes = await fetch(googleUrl);
@@ -172,47 +173,42 @@ export async function GET(request) {
         // Process with Gemini to extract structured data
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp" });
 
-        const prompt = `Actúa como un agente inmobiliario experto. Extrae información estructurada de estos resultados de búsqueda.
+        // Simplified prompt for faster processing
+        const prompt = `Extract rental listing data from these search results. Return ONLY valid JSON array.
 
-Input (Resultados de búsqueda):
-${JSON.stringify(enrichedResults)}
+Input: ${JSON.stringify(enrichedResults)}
 
-Instrucciones:
-1. Analiza título, snippet e imágenes de cada resultado
-2. Extrae: Precio (ARS), Ubicación, Dormitorios, Baños
-3. Extrae números de teléfono del snippet (busca patrones como: 11-1234-5678, +54 9 11..., WhatsApp:, Tel:)
-4. Si encuentras un número, formátalo como: +54 9 AREA NUMERO
-5. DESCARTA resultados que sean VENTAS o artículos de noticias
-6. Incluye las URLs de imágenes en el array 'images'
-7. Si falta info, estima razonablemente o usa valores por defecto
+Extract for each result:
+- price (number, 0 if not found)
+- location (neighborhood/area)
+- bedrooms, bathrooms (numbers, default 1)
+- phone number from snippet (format: +54 9 AREA NUMBER)
+- Discard sales/news articles
 
-Output JSON array:
+JSON format:
 [{
-    "id": "string (usa el link como ID único)",
-    "title": "string (limpio y conciso)",
-    "description": "string (basado en snippet)",
-    "price": number (0 si no se encuentra),
+    "id": "url",
+    "title": "string",
+    "description": "string",
+    "price": number,
     "currency": "ARS",
-    "location": "string (barrio/zona)",
-    "bedrooms": number (default: 1),
-    "bathrooms": number (default: 1),
+    "location": "string",
+    "bedrooms": number,
+    "bathrooms": number,
     "amenities": ["string"],
-    "images": ["url1", "url2"],
-    "contact": {
-        "phone": "string (+54 9 formato) o null",
-        "source": "text" o "image"
-    },
-    "source": "string (ej: Facebook, MercadoLibre)",
-    "url": "string (link original)",
+    "images": ["url"],
+    "contact": {"phone": "string or null", "source": "text"},
+    "source": "string",
+    "url": "string",
     "aiAnalysis": {
-        "summary": "string (análisis breve)",
-        "priceRating": "Excelente" | "Bueno" | "Promedio" | "Alto",
-        "fraudScore": number (0.0-1.0, donde 1.0 es alta probabilidad de fraude)
+        "summary": "brief analysis",
+        "priceRating": "Excelente|Bueno|Promedio|Alto",
+        "fraudScore": number (0-1)
     },
-    "postedAt": "string (ISO date, estima si no está disponible)"
+    "postedAt": "ISO date"
 }]
 
-IMPORTANTE: Solo devuelve JSON válido, sin texto adicional.`;
+Return ONLY the JSON array, no markdown, no explanation.`;
 
         const result = await model.generateContent(prompt);
         const cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
