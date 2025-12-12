@@ -207,7 +207,9 @@ IMPORTANTE: Solo devuelve JSON válido, sin texto adicional.`;
 
         console.log(`Generated ${listings.length} structured listings.`);
 
-        // OCR Enhancement: For listings with images but no contact, try OCR
+        // OCR Enhancement: TEMPORARILY DISABLED to prevent Vercel timeout
+        // TODO: Re-enable after implementing background processing or upgrading Vercel plan
+        /*
         const ocrPromises = listings.map(async (listing) => {
             if (!listing.contact?.phone && listing.images && listing.images.length > 0) {
                 console.log(`Attempting OCR for listing: ${listing.id}`);
@@ -228,6 +230,7 @@ IMPORTANTE: Solo devuelve JSON válido, sin texto adicional.`;
 
         // Wait for all OCR operations
         listings = await Promise.all(ocrPromises);
+        */
 
         // Cache the results for future requests
         if (listings.length > 0) {
