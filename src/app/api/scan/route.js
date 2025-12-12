@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getCachedSearch, setCachedSearch } from '@/lib/cache';
 
-// Simplified version for Vercel free tier - NO AI processing
+// Simplified version for Vercel free tier - NO AI processing, NO cache
 // Just returns formatted Google Search results
 
 export async function GET(request) {
@@ -15,36 +14,38 @@ export async function GET(request) {
 
         console.log("Processing query:", query);
 
-        // Check cache first
-        const cachedResults = await getCachedSearch(query);
-        if (cachedResults) {
-            console.log("Returning cached results");
-            return NextResponse.json({ listings: cachedResults, cached: true });
-        }
-
         // Google Custom Search API
         const GOOGLE_API_KEY = process.env.GEMINI_API_KEY;
         const CX = process.env.GOOGLE_SEARCH_ENGINE_ID;
 
         if (!GOOGLE_API_KEY || !CX) {
+            console.error("Missing API keys");
             return NextResponse.json({
                 error: "Server configuration error",
+                listings: []
             }, { status: 500 });
         }
 
         const searchQ = `${query} alquiler departamento -venta`;
         const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${CX}&q=${encodeURIComponent(searchQ)}&num=10`;
 
+        console.log("Fetching from Google...");
         const googleRes = await fetch(googleUrl);
+
         if (!googleRes.ok) {
-            throw new Error(`Google Search failed: ${googleRes.status}`);
+            console.error("Google Search failed:", googleRes.status);
+            return NextResponse.json({
+                error: `Google Search failed: ${googleRes.status}`,
+                listings: []
+            }, { status: 500 });
         }
 
         const googleData = await googleRes.json();
         const searchResults = googleData.items || [];
+        console.log(`Found ${searchResults.length} results`);
 
         // Simple formatting without AI
-        const listings = searchResults.map((item, index) => {
+        const listings = searchResults.map((item) => {
             // Extract images
             const images = [];
             if (item.pagemap?.cse_image) {
@@ -63,13 +64,13 @@ export async function GET(request) {
                 id: item.link,
                 title: item.title,
                 description: item.snippet || '',
-                price: 0, // Can't extract without AI
+                price: 0,
                 currency: 'ARS',
-                location: query, // Use search query as location
+                location: query,
                 bedrooms: 1,
                 bathrooms: 1,
                 amenities: [],
-                images: images.slice(0, 5),
+                images: [...new Set(images)].slice(0, 5),
                 contact: phone ? { phone, source: 'text' } : null,
                 source: new URL(item.link).hostname,
                 url: item.link,
@@ -82,11 +83,7 @@ export async function GET(request) {
             };
         });
 
-        // Cache results
-        if (listings.length > 0) {
-            await setCachedSearch(query, listings);
-        }
-
+        console.log(`Returning ${listings.length} formatted listings`);
         return NextResponse.json({ listings });
 
     } catch (error) {
